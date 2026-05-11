@@ -21,6 +21,9 @@ SHEET_IDS = {
 
 MASTER_RULES_VENDOR = 'All Vendors'
 
+# Stores that receive overflow/extra units from rounding up case packs
+OVERFLOW_STORES = ['CVM', 'CC', 'LB', 'SH', 'LF', 'MF']
+
 store_map = {
     'Current Quantity City Market: DTR': 'CM',
     'Current Quantity Crabtree Valley Mall': 'CVM',
@@ -82,7 +85,7 @@ def load_rules_from_sheets(vendor: str) -> pd.DataFrame:
 
 
 def compute_store_order(df_master, rules_matrix, short_name, current_lt, hq_col):
-    """Compute the vendor order for a single store."""
+    """Compute raw units needed per store before combined case pack logic."""
     long_name = inv_store_map[short_name]
     if long_name not in df_master.columns:
         return None
@@ -113,97 +116,183 @@ def compute_store_order(df_master, rules_matrix, short_name, current_lt, hq_col)
         (data['Current_Inv'] < data['Effective_Min'])
     )
     data['Needs_Order'] = data['Needs_Order'] & (data['DNO'] == False)
-    data['Units_Needed_To_Max'] = np.where(
-        data['Needs_Order'], data['Max'] - data['Current_Inv'], 0
-    )
-    data['Total_Units_Needed'] = np.ceil(
-        np.maximum(data['Units_Needed_To_Max'], 0) /
-        data['Order In Quantities']
-    ) * data['Order In Quantities']
-    data['Vendor_Cases'] = data['Total_Units_Needed'] / \
-        data['Order In Quantities']
 
-    return data
-
-
-def compute_store_push(warehouse_df, rules_matrix, short_name):
-    """Compute the warehouse push for a single store."""
-    long_name = inv_store_map[short_name]
-    if long_name not in warehouse_df.columns:
-        return None
-
-    lookup_cols = ['SKU', 'Order In Quantities',
-                   f'{short_name}_DNO', f'{short_name}_Min', f'{short_name}_Max']
-    valid_lookup = [c for c in lookup_cols if c in rules_matrix.columns]
-    store_rules = rules_matrix[valid_lookup].copy().rename(columns={
-        f'{short_name}_DNO': 'DNO',
-        f'{short_name}_Min': 'Min',
-        f'{short_name}_Max': 'Max'
-    })
-
-    store_inv = warehouse_df[[
-        'SKU', 'GTIN', 'Item Name', long_name, 'HQ_Qty'
-    ]].copy().rename(columns={long_name: 'Current_Inv'})
-
-    data = pd.merge(store_inv, store_rules, on='SKU', how='left')
-    data = data.fillna({
-        'DNO': False, 'Order In Quantities': 1,
-        'Min': 0, 'Max': 0, 'Current_Inv': 0, 'HQ_Qty': 0
-    })
-
-    data['HQ_Qty'] = data['HQ_Qty'].clip(lower=0)
-
-    data['Needs_Push'] = (
-        (data['Current_Inv'] < data['Max']) &
-        (data['DNO'] == False)
-    )
-
-    data['Units_To_Push'] = np.where(
-        data['Needs_Push'],
+    # Raw units needed to reach max — no per-store case pack rounding yet
+    data['Units_Needed'] = np.where(
+        data['Needs_Order'],
         np.maximum(data['Max'] - data['Current_Inv'], 0),
         0
     )
 
-    data['Units_To_Push'] = np.where(
-        data['Units_To_Push'] > 0,
-        np.ceil(data['Units_To_Push'] / data['Order In Quantities']
-                ) * data['Order In Quantities'],
-        0
-    )
-
-    data['Units_To_Push'] = np.minimum(
-        data['Units_To_Push'], data['HQ_Qty']).clip(lower=0)
-    data['Cases_To_Push'] = (
-        data['Units_To_Push'] / data['Order In Quantities']).clip(lower=0)
-
     return data
 
 
-def build_master_summary(all_store_orders: dict) -> pd.DataFrame:
-    frames = []
+def compute_combined_order(all_store_orders: dict, selected_stores: list) -> pd.DataFrame:
+    """
+    Combine all stores' raw unit needs into one order.
+    1. Sum raw units needed across all stores per SKU
+    2. Round up to nearest case pack ONCE across all stores combined
+    3. Distribute extras proportionally to OVERFLOW_STORES based on their max
+    Returns a per-SKU summary and updates each store's allocated units.
+    """
+    # Collect all SKU metadata and per-store needs
+    sku_info = {}     # SKU -> {GTIN, Item Name, Case Pack, Default Unit Cost}
+    store_needs = {}  # SKU -> {store: {units_needed, max, current_inv}}
+
     for store, data in all_store_orders.items():
         if data is None:
             continue
-        ordered = data[data['Total_Units_Needed'] > 0][
-            ['SKU', 'GTIN', 'Item Name', 'Total_Units_Needed', 'Vendor_Cases']
-        ].copy()
-        ordered['Store'] = store
-        frames.append(ordered)
+        for _, row in data.iterrows():
+            sku = row['SKU']
+            if sku not in sku_info:
+                sku_info[sku] = {
+                    'GTIN': row['GTIN'],
+                    'Item Name': row['Item Name'],
+                    'Case Pack': int(row['Order In Quantities']),
+                    'Default Unit Cost': row['Default Unit Cost']
+                }
+            if sku not in store_needs:
+                store_needs[sku] = {}
+            store_needs[sku][store] = {
+                'units_needed': max(int(row['Units_Needed']), 0),
+                'max': max(int(row['Max']), 0),
+                'current_inv': max(int(row['Current_Inv']), 0)
+            }
 
-    if not frames:
-        return pd.DataFrame(columns=['GTIN', 'Item Name', 'Total Cases', 'Total Units'])
+    order_rows = []
+    # store_allocations[store][sku] = final allocated units for that store
+    store_allocations = {s: {} for s in selected_stores}
 
-    combined = pd.concat(frames, ignore_index=True)
-    summary = (
-        combined.groupby(['SKU', 'GTIN', 'Item Name'], as_index=False)
-        .agg(Total_Cases=('Vendor_Cases', 'sum'),
-             Total_Units=('Total_Units_Needed', 'sum'))
+    for sku, stores in store_needs.items():
+        case_pack = sku_info[sku]['Case Pack']
+        if case_pack <= 0:
+            case_pack = 1
+
+        # Total raw units needed across all stores
+        total_raw = sum(v['units_needed'] for v in stores.values())
+
+        if total_raw == 0:
+            for store in selected_stores:
+                store_allocations[store][sku] = 0
+            continue
+
+        # Round up to nearest case pack across all stores combined
+        total_cases = int(np.ceil(total_raw / case_pack))
+        total_units_ordered = total_cases * case_pack
+        extra_units = total_units_ordered - total_raw
+
+        # Start with each store's raw need
+        allocated = {store: stores.get(store, {}).get('units_needed', 0)
+                     for store in selected_stores}
+
+        # Distribute extras proportionally to overflow stores based on their max
+        overflow_eligible = [
+            s for s in OVERFLOW_STORES
+            if s in selected_stores and stores.get(s, {}).get('max', 0) > 0
+        ]
+
+        if extra_units > 0 and overflow_eligible:
+            total_max = sum(stores.get(s, {}).get('max', 0)
+                            for s in overflow_eligible)
+
+            remaining_extra = extra_units
+            proportions = []
+            for s in overflow_eligible:
+                store_max = stores.get(s, {}).get('max', 0)
+                proportion = store_max / total_max if total_max > 0 else 0
+                proportions.append((s, proportion))
+
+            # Distribute proportionally, giving whole units only
+            distributed = {}
+            running_total = 0
+            for idx, (s, proportion) in enumerate(proportions):
+                if idx == len(proportions) - 1:
+                    # Last store gets the remainder to avoid rounding loss
+                    units = remaining_extra - running_total
+                else:
+                    units = int(proportion * extra_units)
+                    running_total += units
+                distributed[s] = units
+
+            for s, extra in distributed.items():
+                current_inv = stores.get(s, {}).get('current_inv', 0)
+                store_max = stores.get(s, {}).get('max', 0)
+                # Cap extras so store doesn't exceed max + 1 case pack
+                headroom = max((store_max + case_pack) -
+                               current_inv - allocated[s], 0)
+                allocated[s] += min(extra, headroom)
+
+        for store in selected_stores:
+            store_allocations[store][sku] = allocated.get(store, 0)
+
+        order_rows.append({
+            'SKU': sku,
+            'GTIN': sku_info[sku]['GTIN'],
+            'Item Name': sku_info[sku]['Item Name'],
+            'Case Pack': case_pack,
+            'Total Units Needed': total_raw,
+            'Total Cases to Order': total_cases,
+            'Total Units to Order': total_units_ordered,
+            'Extra Units': extra_units,
+            'Default Unit Cost': sku_info[sku]['Default Unit Cost']
+        })
+
+    combined_df = pd.DataFrame(order_rows) if order_rows else pd.DataFrame(
+        columns=['SKU', 'GTIN', 'Item Name', 'Case Pack',
+                 'Total Units Needed', 'Total Cases to Order',
+                 'Total Units to Order', 'Extra Units', 'Default Unit Cost']
     )
-    summary = summary.drop(columns='SKU')
-    summary = summary.rename(columns={
-        'Total_Cases': 'Total Cases', 'Total_Units': 'Total Units'})
-    summary = summary.sort_values('Item Name').reset_index(drop=True)
-    return summary
+
+    if not combined_df.empty:
+        combined_df = combined_df.sort_values(
+            'Item Name').reset_index(drop=True)
+
+    return combined_df, store_allocations
+
+
+def build_allocated_breakout(store_allocations: dict, selected_stores: list,
+                             all_store_orders: dict) -> pd.DataFrame:
+    """
+    Build breakout using final allocated quantities (including extras)
+    rather than raw units needed.
+    """
+    # Collect SKU metadata
+    sku_meta = {}
+    for store, data in all_store_orders.items():
+        if data is None:
+            continue
+        for _, row in data.iterrows():
+            sku = row['SKU']
+            if sku not in sku_meta:
+                sku_meta[sku] = {
+                    'GTIN': row['GTIN'],
+                    'Item Name': row['Item Name']
+                }
+
+    rows = []
+    all_skus = set()
+    for store_alloc in store_allocations.values():
+        all_skus.update(store_alloc.keys())
+
+    for sku in all_skus:
+        total = sum(
+            store_allocations[s].get(sku, 0) for s in selected_stores)
+        if total == 0:
+            continue
+        row = {
+            'Item Name': sku_meta.get(sku, {}).get('Item Name', ''),
+            'GTIN': sku_meta.get(sku, {}).get('GTIN', '')
+        }
+        for store in selected_stores:
+            row[store] = store_allocations[store].get(sku, 0)
+        rows.append(row)
+
+    if not rows:
+        return pd.DataFrame()
+
+    breakout_df = pd.DataFrame(rows)
+    breakout_df = breakout_df.sort_values('Item Name').reset_index(drop=True)
+    return breakout_df
 
 
 def build_push_master_summary(all_store_pushes: dict) -> pd.DataFrame:
@@ -270,6 +359,61 @@ def build_breakout(all_store_orders: dict, selected_stores: list,
     return breakout_df
 
 
+def build_combined_excel(combined_df: pd.DataFrame, breakout_df: pd.DataFrame,
+                         store_allocations: dict, selected_stores: list,
+                         selected_vendor: str, date_str: str) -> bytes:
+    """Build Excel with Master Order, Breakout, and one tab per store."""
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
+        wb = writer.book
+        text_fmt = wb.add_format({'num_format': '@'})
+
+        # Master Order tab
+        export_master = combined_df[[
+            'GTIN', 'Item Name', 'Case Pack',
+            'Total Cases to Order', 'Total Units to Order', 'Extra Units'
+        ]].copy()
+        export_master.to_excel(writer, index=False, sheet_name='Master Order')
+        ws = writer.sheets['Master Order']
+        ws.set_column('A:A', 20, text_fmt)
+        ws.set_column('B:B', 40)
+        ws.set_column('C:F', 15)
+
+        # Breakout tab
+        if not breakout_df.empty:
+            breakout_df.to_excel(writer, index=False, sheet_name='Breakout')
+            ws_b = writer.sheets['Breakout']
+            ws_b.set_column('A:A', 40)
+            ws_b.set_column('B:B', 20, text_fmt)
+            for col_idx in range(len(selected_stores)):
+                ws_b.set_column(col_idx + 2, col_idx + 2, 8)
+
+        # Per-store tabs
+        for store in selected_stores:
+            alloc = store_allocations.get(store, {})
+            store_rows = [
+                {'GTIN': combined_df.loc[
+                    combined_df['SKU'] == sku, 'GTIN'].values[0]
+                    if sku in combined_df['SKU'].values else '',
+                 'Item Name': combined_df.loc[
+                    combined_df['SKU'] == sku, 'Item Name'].values[0]
+                    if sku in combined_df['SKU'].values else sku,
+                 'Units Allocated': units}
+                for sku, units in alloc.items() if units > 0
+            ]
+            if not store_rows:
+                continue
+            store_df = pd.DataFrame(store_rows).sort_values(
+                'Item Name').reset_index(drop=True)
+            store_df.to_excel(writer, index=False, sheet_name=store[:31])
+            ws_s = writer.sheets[store[:31]]
+            ws_s.set_column('A:A', 20, text_fmt)
+            ws_s.set_column('B:B', 40)
+            ws_s.set_column('C:C', 15)
+
+    return buf.getvalue()
+
+
 def build_master_excel(all_store_orders: dict, master_summary: pd.DataFrame,
                        breakout_df: pd.DataFrame, selected_stores: list,
                        units_col: str, cases_col: str) -> bytes:
@@ -300,9 +444,7 @@ def build_master_excel(all_store_orders: dict, master_summary: pd.DataFrame,
                 'GTIN', 'Item Name', cases_col, units_col
             ]].copy()
             order = order.rename(columns={
-                cases_col: 'Cases',
-                units_col: 'Total Units'
-            })
+                cases_col: 'Cases', units_col: 'Total Units'})
             if order.empty:
                 continue
             order.to_excel(writer, index=False, sheet_name=store[:31])
@@ -315,8 +457,56 @@ def build_master_excel(all_store_orders: dict, master_summary: pd.DataFrame,
 
 
 def file_prefix(date_str: str, vendor_label: str) -> str:
-    """Build a consistent file prefix with vendor label if provided."""
     return f"{date_str}_{vendor_label}" if vendor_label else date_str
+
+
+def compute_store_push(warehouse_df, rules_matrix, short_name):
+    """Compute the warehouse push for a single store."""
+    long_name = inv_store_map[short_name]
+    if long_name not in warehouse_df.columns:
+        return None
+
+    lookup_cols = ['SKU', 'Order In Quantities',
+                   f'{short_name}_DNO', f'{short_name}_Min', f'{short_name}_Max']
+    valid_lookup = [c for c in lookup_cols if c in rules_matrix.columns]
+    store_rules = rules_matrix[valid_lookup].copy().rename(columns={
+        f'{short_name}_DNO': 'DNO',
+        f'{short_name}_Min': 'Min',
+        f'{short_name}_Max': 'Max'
+    })
+
+    store_inv = warehouse_df[[
+        'SKU', 'GTIN', 'Item Name', long_name, 'HQ_Qty'
+    ]].copy().rename(columns={long_name: 'Current_Inv'})
+
+    data = pd.merge(store_inv, store_rules, on='SKU', how='left')
+    data = data.fillna({
+        'DNO': False, 'Order In Quantities': 1,
+        'Min': 0, 'Max': 0, 'Current_Inv': 0, 'HQ_Qty': 0
+    })
+
+    data['HQ_Qty'] = data['HQ_Qty'].clip(lower=0)
+    data['Needs_Push'] = (
+        (data['Current_Inv'] < data['Max']) &
+        (data['DNO'] == False)
+    )
+    data['Units_To_Push'] = np.where(
+        data['Needs_Push'],
+        np.maximum(data['Max'] - data['Current_Inv'], 0),
+        0
+    )
+    data['Units_To_Push'] = np.where(
+        data['Units_To_Push'] > 0,
+        np.ceil(data['Units_To_Push'] / data['Order In Quantities']
+                ) * data['Order In Quantities'],
+        0
+    )
+    data['Units_To_Push'] = np.minimum(
+        data['Units_To_Push'], data['HQ_Qty']).clip(lower=0)
+    data['Cases_To_Push'] = (
+        data['Units_To_Push'] / data['Order In Quantities']).clip(lower=0)
+
+    return data
 
 
 # =========================================================
@@ -395,47 +585,76 @@ def page_vendor_ordering():
         st.caption(
             f"✅ {selected_vendor} — Matched {matched} of {total} catalog SKUs to rules.")
 
+        # Compute raw store needs
         all_store_orders = {
             s: compute_store_order(
                 df_master, rules_matrix, s, store_lead_times[s], hq_col)
             for s in selected_stores
         }
 
-        master_summary = build_master_summary(all_store_orders)
-        breakout_df = build_breakout(
-            all_store_orders, selected_stores, 'Total_Units_Needed')
+        # Combined case pack logic
+        combined_df, store_allocations = compute_combined_order(
+            all_store_orders, selected_stores)
+
+        # Breakout uses final allocated quantities including extras
+        breakout_df = build_allocated_breakout(
+            store_allocations, selected_stores, all_store_orders)
 
         tab_labels = ["📋 Master Order", "📊 Breakout"] + selected_stores
         tabs = st.tabs(tab_labels)
 
+        # --- MASTER ORDER TAB ---
         with tabs[0]:
-            st.subheader(f"📋 Master Order Summary — {selected_vendor}")
-            st.caption("Combined order quantities across all selected stores.")
-            if not master_summary.empty:
-                col1, col2 = st.columns(2)
-                col1.metric("Total Cases",
-                            f"{int(master_summary['Total Cases'].sum())}")
-                col2.metric("Total Units",
-                            f"{int(master_summary['Total Units'].sum())}")
-                st.dataframe(master_summary,
-                             use_container_width=True, hide_index=True)
-                master_excel = build_master_excel(
-                    all_store_orders, master_summary, breakout_df,
-                    selected_stores, 'Total_Units_Needed', 'Vendor_Cases'
+            st.subheader(f"📋 Combined Master Order — {selected_vendor}")
+            st.caption(
+                "Case packs are calculated across all stores combined. "
+                "Extra units from rounding are distributed proportionally "
+                f"to: {', '.join(OVERFLOW_STORES)}."
+            )
+
+            if not combined_df.empty:
+                total_cases = int(combined_df['Total Cases to Order'].sum())
+                total_units = int(combined_df['Total Units to Order'].sum())
+                total_cost = (combined_df['Total Units to Order'] *
+                              combined_df['Default Unit Cost']).sum()
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Total Cases to Order", f"{total_cases}")
+                col2.metric("Total Units to Order", f"{total_units}")
+                col3.metric("Estimated Cost", f"${total_cost:,.2f}")
+
+                display_cols = [
+                    'GTIN', 'Item Name', 'Case Pack',
+                    'Total Units Needed', 'Total Cases to Order',
+                    'Total Units to Order', 'Extra Units'
+                ]
+                ed_combined = st.data_editor(
+                    combined_df[display_cols],
+                    use_container_width=True,
+                    hide_index=True,
+                    num_rows="dynamic",
+                    key="combined_master_ed"
+                )
+
+                combined_excel = build_combined_excel(
+                    combined_df, breakout_df, store_allocations,
+                    selected_stores, selected_vendor, date_str
                 )
                 st.download_button(
-                    "📥 Download Master Order (All Stores + Breakout)",
-                    master_excel,
-                    file_name=f"{date_str}_{selected_vendor}_Master_Order.xlsx",
+                    "📥 Download Combined Order (All Stores + Breakout)",
+                    combined_excel,
+                    file_name=f"{date_str}_{selected_vendor}_Combined_Order.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             else:
                 st.success("✅ No orders needed across any store.")
 
+        # --- BREAKOUT TAB ---
         with tabs[1]:
-            st.subheader(f"📊 Order Breakout — {selected_vendor}")
+            st.subheader(f"📊 Allocation Breakout — {selected_vendor}")
             st.caption(
-                "One row per item ordered, with units per store as columns.")
+                "Final units allocated per store, including extras distributed "
+                f"proportionally to overflow stores: {', '.join(OVERFLOW_STORES)}."
+            )
             if not breakout_df.empty:
                 st.dataframe(
                     breakout_df, use_container_width=True, hide_index=True)
@@ -455,8 +674,9 @@ def page_vendor_ordering():
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             else:
-                st.success("✅ No orders to break out.")
+                st.success("✅ No allocations to break out.")
 
+        # --- PER-STORE TABS ---
         for i, short_name in enumerate(selected_stores):
             with tabs[i + 2]:
                 data = all_store_orders[short_name]
@@ -465,54 +685,74 @@ def page_vendor_ordering():
                         f"Missing column '{inv_store_map[short_name]}' in Catalog.")
                     continue
 
-                st.subheader(f"🛒 Vendor Orders: {short_name}")
-                order_summary = data[data['Total_Units_Needed'] > 0][[
-                    'SKU', 'GTIN', 'Item Name', 'Vendor_Cases', 'Order In Quantities',
-                    'Total_Units_Needed', 'Current_Inv', 'Max', 'Default Unit Cost'
-                ]].copy().reset_index(drop=True)
-                order_summary.rename(columns={
-                    'Vendor_Cases': 'Order (Cases)',
-                    'Order In Quantities': 'Case Pack',
-                    'Total_Units_Needed': 'Total Units'
-                }, inplace=True)
+                st.subheader(f"🛒 Allocation: {short_name}")
+                alloc = store_allocations.get(short_name, {})
 
-                if not order_summary.empty:
-                    frozen_mask = order_summary['Item Name'].str.startswith(
+                # Build display merging allocation back with item info
+                store_display_rows = []
+                for _, row in data.iterrows():
+                    sku = row['SKU']
+                    allocated = alloc.get(sku, 0)
+                    if allocated == 0:
+                        continue
+                    store_display_rows.append({
+                        'SKU': sku,
+                        'GTIN': row['GTIN'],
+                        'Item Name': row['Item Name'],
+                        'Case Pack': int(row['Order In Quantities']),
+                        'Units Needed': int(row['Units_Needed']),
+                        'Units Allocated': allocated,
+                        'Current Inv': int(row['Current_Inv']),
+                        'Max': int(row['Max']),
+                        'Default Unit Cost': row['Default Unit Cost']
+                    })
+
+                if store_display_rows:
+                    store_df = pd.DataFrame(
+                        store_display_rows).sort_values('Item Name').reset_index(drop=True)
+
+                    frozen_mask = store_df['Item Name'].str.startswith(
                         'FRZN', na=False)
+
                     for label, df_type in [
-                        ("📦 Dry Order", order_summary[~frozen_mask]),
-                        ("❄️ Frozen Order", order_summary[frozen_mask])
+                        ("📦 Dry", store_df[~frozen_mask]),
+                        ("❄️ Frozen", store_df[frozen_mask])
                     ]:
                         st.markdown(f"#### {label}")
                         if not df_type.empty:
                             ed_df = st.data_editor(
                                 df_type, use_container_width=True,
                                 hide_index=True, num_rows="dynamic",
-                                key=f"vend_{label}_{short_name}")
-                            cost = (ed_df['Total Units'] *
+                                key=f"alloc_{label}_{short_name}"
+                            )
+                            cost = (ed_df['Units Allocated'] *
                                     ed_df['Default Unit Cost']).sum()
-                            st.metric(f"{label} Cost", f"${cost:,.2f}")
+                            st.metric(f"{label} Allocated Cost",
+                                      f"${cost:,.2f}")
+
                             export_df = ed_df[[
-                                'GTIN', 'Item Name', 'Order (Cases)']].copy()
+                                'GTIN', 'Item Name', 'Units Allocated']].copy()
                             buf = io.BytesIO()
                             with pd.ExcelWriter(buf, engine='xlsxwriter') as writer:
                                 export_df.to_excel(
-                                    writer, index=False, sheet_name='Vendor_Order')
+                                    writer, index=False, sheet_name='Allocation')
                                 text_fmt = writer.book.add_format(
                                     {'num_format': '@'})
-                                writer.sheets['Vendor_Order'].set_column(
+                                writer.sheets['Allocation'].set_column(
                                     'A:A', 20, text_fmt)
-                                writer.sheets['Vendor_Order'].set_column(
+                                writer.sheets['Allocation'].set_column(
                                     'B:B', 40)
+                                writer.sheets['Allocation'].set_column(
+                                    'C:C', 15)
                             st.download_button(
-                                f"📥 Download {label}", buf.getvalue(),
-                                file_name=f"{date_str}_{selected_vendor}_{label}_{short_name}.xlsx",
-                                key=f"dl_{label}_{short_name}"
+                                f"📥 Download {label} Allocation", buf.getvalue(),
+                                file_name=f"{date_str}_{selected_vendor}_Allocation_{short_name}.xlsx",
+                                key=f"dl_alloc_{label}_{short_name}"
                             )
                         else:
                             st.write("No items in this category.")
                 else:
-                    st.success("✅ No vendor order needed for this store.")
+                    st.success(f"✅ No allocation needed for {short_name}.")
 
     elif not selected_stores:
         st.warning("Please select at least one store in the sidebar to begin.")
@@ -601,7 +841,6 @@ def page_warehouse_push():
             st.stop()
 
         warehouse_df = warehouse_df.rename(columns={hq_col_full: 'HQ_Qty'})
-
         catalog_skus = set(warehouse_df['SKU'].unique())
         rules_filtered = rules_matrix[rules_matrix['SKU'].isin(
             catalog_skus)].copy()
@@ -647,12 +886,16 @@ def page_warehouse_push():
                     all_store_pushes, push_summary, breakout_df,
                     selected_stores, 'Units_To_Push', 'Cases_To_Push'
                 )
-                st.download_button(
-                    "📥 Download Master Push (All Stores + Breakout)",
-                    master_excel,
-                    file_name=f"{prefix}_Warehouse_Push_Master.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                if vendor_label:
+                    st.download_button(
+                        "📥 Download Master Push (All Stores + Breakout)",
+                        master_excel,
+                        file_name=f"{prefix}_Warehouse_Push_Master.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                else:
+                    st.warning(
+                        "⚠️ Enter a Vendor Label in the sidebar to enable downloads.")
             else:
                 st.success(
                     "✅ No pushes needed — all stores are at or above max.")
@@ -674,11 +917,15 @@ def page_warehouse_push():
                     ws_b.set_column('B:B', 20, text_fmt)
                     for col_idx in range(len(selected_stores)):
                         ws_b.set_column(col_idx + 2, col_idx + 2, 8)
-                st.download_button(
-                    "📥 Download Breakout", buf_b.getvalue(),
-                    file_name=f"{prefix}_Warehouse_Push_Breakout.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
+                if vendor_label:
+                    st.download_button(
+                        "📥 Download Breakout", buf_b.getvalue(),
+                        file_name=f"{prefix}_Warehouse_Push_Breakout.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                else:
+                    st.warning(
+                        "⚠️ Enter a Vendor Label in the sidebar to enable downloads.")
             else:
                 st.success("✅ No items to break out.")
 
@@ -726,11 +973,17 @@ def page_warehouse_push():
                             'A:A', 20, text_fmt)
                         writer.sheets['Push_List'].set_column('B:B', 40)
                         writer.sheets['Push_List'].set_column('C:D', 15)
-                    st.download_button(
-                        "📥 Download Push List", buf.getvalue(),
-                        file_name=f"{prefix}_Warehouse_Push_{short_name}.xlsx",
-                        key=f"dl_push_{short_name}"
-                    )
+                    if vendor_label:
+                        st.download_button(
+                            "📥 Download Push List", buf.getvalue(),
+                            file_name=f"{prefix}_Warehouse_Push_{short_name}.xlsx",
+                            key=f"dl_push_{short_name}"
+                        )
+                    else:
+                        st.warning(
+                            "⚠️ Enter a Vendor Label in the sidebar to enable downloads.",
+                            icon="⚠️"
+                        )
                 else:
                     st.success(
                         f"✅ {short_name} is fully stocked — nothing to push.")

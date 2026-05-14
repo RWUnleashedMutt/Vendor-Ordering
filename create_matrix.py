@@ -18,6 +18,13 @@ SCOPES = [
     'https://www.googleapis.com/auth/drive'
 ]
 
+EXCLUDED_SKUS = {
+    # Add SKUs here to exclude them from the matrix entirely
+    # Example:
+    # '12345',
+    # 'SKU-ABC',
+}
+
 SHEET_IDS = {
     'All Vendors': '1iX-LpiavNqcyZqe1r068DmziafQbsDuugmdszqS89Tw',
     'Bradley Caldwell': '1eqENDXTdDJVKdos-VUXYNYMNM806rNcDrv63Q654nyc',
@@ -127,6 +134,22 @@ def load_or_create_matrix(path, catalog):
     return rules_df
 
 
+def remove_excluded_skus(rules_df):
+    """Remove any SKUs that are on the exclusion list."""
+    excluded = rules_df[rules_df['SKU'].isin(EXCLUDED_SKUS)]
+
+    if not excluded.empty:
+        print(f"\nRemoving {len(excluded)} excluded SKU(s):")
+        for sku in excluded['SKU'].tolist():
+            print(f"  - {sku}")
+        rules_df = rules_df[~rules_df['SKU'].isin(
+            EXCLUDED_SKUS)].reset_index(drop=True)
+    else:
+        print("No excluded SKUs found in matrix.")
+
+    return rules_df
+
+
 def remove_discontinued_skus(rules_df, catalog):
     """Remove SKUs from the matrix that are no longer in the catalog."""
     catalog_skus = set(catalog['SKU'].tolist())
@@ -221,11 +244,15 @@ def sync_rules_matrix(vendor, catalog_path, matrix_path):
     """Main logic to sync the rules matrix and push to Google Sheets."""
     try:
         catalog = load_catalog(catalog_path)
+        # Filter excluded SKUs from catalog
+        catalog = catalog[~catalog['SKU'].isin(EXCLUDED_SKUS)]
         rules_df = load_or_create_matrix(matrix_path, catalog)
+        # Remove excluded SKUs from matrix
+        rules_df = remove_excluded_skus(rules_df)
         rules_df = remove_discontinued_skus(rules_df, catalog)
         rules_df = ensure_store_columns(rules_df)
         rules_df = append_new_skus(rules_df, catalog)
-        rules_df = apply_dno_zeroing(rules_df)  # <-- enforce DNO zeroing
+        rules_df = apply_dno_zeroing(rules_df)
 
         matrix_columns = ['SKU', 'Item Name',
                           'Reporting Category', 'Order In Quantities']

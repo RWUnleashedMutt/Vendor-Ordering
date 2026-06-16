@@ -18,190 +18,15 @@ SCOPES = [
     'https://www.googleapis.com/auth/drive'
 ]
 
-EXCLUDED_SKUS = {
-    '11040', '15268', '27710', '29452', '29451', '15697', '26610', '11231',
-    '26237', '13366', '13364', '13365', '14540', '25689', '14541', '29226',
-    '14538', '29227', '13054', '12823', '14325', '11174', '13818', '11168',
-    '15056', '13153', '13151', '27480', '13425', '15074', '15072', '15053',
-    '15054', '28995', '15070', '10979', '15683', '26205', '26206', '26208',
-    '27906', '28973', '28970', '28972', '27907', '28971', '27902', '27903',
-    '27904', '27905', '27899', '27900', '27908', '27909', '25502', '25501',
-    '14581', '14582', '14583', '16401', '26834', '16895', '16852', '16894',
-    '15740', '15760', '26624', '13917', '13580', '12427', '12426', '11505',
-    '11510', '12896', '12886', '14515', '12905', '14510', '14511', '12894',
-    '14506', '12893', '14504', '12897', '14509', '12887', '14508', '12890',
-    '14507', '14513', '12553', '15796', '15486', '12907', '27082', '27078',
-    '27085', '27081', '27077', '27084', '27080', '27076', '27083', '27079',
-    '27075', '13579', '13328', '13645', '25611', '25610', '12552', '15546',
-    '12549', '15545', '26957', '26956', '13646', '15462', '15426', '12546',
-    '13644', '12200', '12213', '11504', '15721', '12876', '12872', '12873',
-    '12874', '12875', '12877', '15716', '15815', '14653', '14649', '28052',
-    '28053', '28054', '26505', '26501', '26504', '14648', '15689', '15702',
-    '27936', '11516', '14099', '14098', '26503', '26502', '26507', '26442',
-    '26443', '26993', '28192', '16872', '10147', '16869', '27729', '14776',
-    '28744', '28747', '28746', '28749', '28748', '28737', '22891',
-    '28568',
-    '29139',
-    '29202',
-    '29142',
-    '28554',
-    '28555',
-    '28556',
-    '28557',
-    '28558',
-    '28560',
-    '28561',
-    '28564',
-    '28565',
-    '28566',
-    '29003',
-    '29000',
-    '29002',
-    '29001',
-    '29126',
-    '14956',
-    '28999',
-    '30427',
-    '22969',
-    '29124',
-    '29125',
-    '29004',
-    '29005',
-    '29271',
-    '29270',
-    '29266',
-    '29269',
-    '29267',
-    '29268',
-    '29265',
-    '13053',
-    '14178',
-    '26444',
-    '28485',
-    '15781',
-    '10494',
-    '27207',
-    '27206',
-    '13402',
-    '27213',
-    '16286',
-    '27214',
-    '27210',
-    '27231',
-    '27230',
-    '27222',
-    '16516',
-    '10241',
-    '10936',
-    '27208',
-    '27219',
-    '16662',
-    '11772',
-    '12214',
-    '27220',
-    '13376',
-    '27215',
-    '16309',
-    '16520',
-    '17331',
-    '11017',
-    '13535',
-    '13527',
-    '27217',
-    '29693',
-    '29162',
-    '27212',
-    '27211',
-    '27209',
-    '28153',
-    '29092',
-    '29093',
-    '16060',
-    '17362',
-    '10525',
-    '13965',
-    '17083',
-    '16299',
-    '16582',
-    '17262',
-    '16023',
-    '16783',
-    '725890N',
-    '12671',
-    '13511',
-    '10973',
-    '28160',
-    '10421',
-    '10492',
-    '27266',
-    '27267',
-    '27268',
-    '10386',
-    '28157',
-    '28158',
-    '28159',
-    '29678',
-    '11004',
-    '10782',
-    '15752',
-    '16861',
-    '16883',
-    '29069',
-    '10997',
-    '11003',
-    '18011',
-    '15727',
-    '15878',
-    '10974',
-    '10380',
-    '29679',
-    '10861',
-    '15861',
-    '16847',
-    '18006',
-    '10933',
-    '11005',
-    '15863',
-    '16846',
-    '10996',
-    '15812',
-    '17474',
-    '17475',
-    '29875',
-    '10689',
-    '10786',
-    '29802',
-    '27848',
-    '27843',
-    '27844',
-    '27845',
-    '27846',
-    '27847',
-    '13765',
-    '16037',
-    '17338',
-    '17343',
-    '27400',
-    '16131',
-    '17793',
-    '27413',
-    '27095',
-    '27096',
-    'X755585',
-    '2008497',
-    '11732',
-    '30570',
-    '10819',
-    '818353'
-}
-
 SHEET_IDS = {
-
-    'Bradley Caldwell': '1eqENDXTdDJVKdos-VUXYNYMNM806rNcDrv63Q654nyc',
+    'Canine Caviar': '1TJXe9V_aF1A1wm_O9XK_iWJNU119iH3ZBBorUlX_0ss',
     'Fluff & Tuff': '1nGWM9Lt34e3vpqaETjPeMVsCTKVC9kIEQ3VVx1mEUqY',
     'SE': '1O6HWGeLgtdScnJ0_pQc8asaSj3-L4pP9vjCvvXa26vQ',
-    'Body Parts': '1PIEa0115ZLYgYcKOlO4R3D-qOK_TJ94ngAaPu4dpUkM',
-    'Front Porch Pets': '1CyW8rNNWzmYH9iqVRgN5iTWCiqgd-cJnrAJGktGS2a0'
+    'Front Porch Pets': '1CyW8rNNWzmYH9iqVRgN5iTWCiqgd-cJnrAJGktGS2a0',
+    'Butchers Block': '1nDtvvDVu9tAzR2iDB4uMpUG3rcN3Fm_v09WJw3jvbJI',
+    'Adored Beast': '1HwOxpAzI_HlntVVfOqxBVAWDy7cznPxxhUqOR5cy6ng',
+    'InClover': '1GJX-rqphRYAHM50HKrXhE3qG3ZUeB9kP0njwcuM56co'
+    # Add a line for each vendor
 }
 
 store_map = {
@@ -251,6 +76,26 @@ def get_or_create_sheet(client, vendor):
     spreadsheet = client.open_by_key(SHEET_IDS[vendor])
     print(f"Connected to Google Sheet for {vendor}")
     return spreadsheet
+
+
+def load_excluded_skus(spreadsheet):
+    """Load excluded SKUs from 'Excluded SKUs' sheet within the Rules Matrix workbook."""
+    try:
+        # Try to get the "Excluded SKUs" worksheet
+        worksheet = spreadsheet.worksheet("Excluded SKUs")
+        skus = worksheet.col_values(1)  # Get column A
+
+        # Skip header row and empty cells, strip whitespace
+        excluded = {sku.strip() for sku in skus[1:] if sku.strip()}
+
+        print(
+            f"✓ Loaded {len(excluded)} excluded SKUs from 'Excluded SKUs' sheet")
+        return excluded
+    except Exception as e:
+        print(f"⚠ Warning: Could not load 'Excluded SKUs' sheet: {e}")
+        print("  Proceeding with empty exclusion list.")
+        print("  Note: Create a sheet named 'Excluded SKUs' in your Rules Matrix workbook.")
+        return set()
 
 
 def push_to_sheets(spreadsheet, rules_df):
@@ -305,16 +150,16 @@ def load_or_create_matrix(path, catalog):
     return rules_df
 
 
-def remove_excluded_skus(rules_df):
+def remove_excluded_skus(rules_df, excluded_set):
     """Remove any SKUs that are on the exclusion list."""
-    excluded = rules_df[rules_df['SKU'].isin(EXCLUDED_SKUS)]
+    excluded = rules_df[rules_df['SKU'].isin(excluded_set)]
 
     if not excluded.empty:
         print(f"\nRemoving {len(excluded)} excluded SKU(s):")
         for sku in excluded['SKU'].tolist():
             print(f"  - {sku}")
         rules_df = rules_df[~rules_df['SKU'].isin(
-            EXCLUDED_SKUS)].reset_index(drop=True)
+            excluded_set)].reset_index(drop=True)
     else:
         print("No excluded SKUs found in matrix.")
 
@@ -377,6 +222,71 @@ def append_new_skus(rules_df, catalog):
     return rules_df
 
 
+def validate_dno_consistency(rules_df):
+    """Check for inconsistencies: DNO=True but Min/Max are non-zero (likely user forgot to change DNO).
+    This prevents accidental data loss where user sets Min/Max but forgets to flip DNO to False."""
+    inconsistencies = []
+
+    for code in store_map.values():
+        dno_col = f'{code}_DNO'
+        min_col = f'{code}_Min'
+        max_col = f'{code}_Max'
+
+        if dno_col not in rules_df.columns or min_col not in rules_df.columns or max_col not in rules_df.columns:
+            continue
+
+        # Find rows where DNO=True but Min or Max are non-zero
+        dno_mask = rules_df[dno_col].apply(
+            lambda v: str(v).upper() == 'TRUE' or v is True
+        )
+        nonzero_mask = (rules_df[min_col] != 0) | (rules_df[max_col] != 0)
+        issue_mask = dno_mask & nonzero_mask
+
+        if issue_mask.any():
+            for idx in rules_df[issue_mask].index:
+                sku = rules_df.loc[idx, 'SKU']
+                min_val = rules_df.loc[idx, min_col]
+                max_val = rules_df.loc[idx, max_col]
+                inconsistencies.append({
+                    'SKU': sku,
+                    'Store': code,
+                    'DNO': True,
+                    'Min': min_val,
+                    'Max': max_val
+                })
+
+    if inconsistencies:
+        print("\n" + "="*75)
+        print("⚠️  WARNING: DNO/Min/Max Inconsistencies Detected!")
+        print("="*75)
+        print("\nThe following items have DNO=True BUT non-zero Min/Max values.")
+        print("This likely means you forgot to set DNO=False after setting Min/Max.")
+        print("If you proceed, these Min/Max values will be ERASED and set to 0.\n")
+
+        for item in inconsistencies:
+            print(f"  SKU: {item['SKU']:<15} Store: {item['Store']:<5} "
+                  f"DNO=True, Min={item['Min']}, Max={item['Max']}")
+
+        print("\n" + "="*75)
+        confirm = input(
+            "Do you want to KEEP these Min/Max values and set DNO=False? (yes/no): ").strip().lower()
+
+        if confirm == 'yes':
+            print("\n✓ Fixing inconsistencies: Setting DNO=False for affected items...")
+            for item in inconsistencies:
+                code = item['Store']
+                sku = item['SKU']
+                dno_col = f'{code}_DNO'
+                rules_df.loc[rules_df['SKU'] == sku, dno_col] = False
+            print(
+                f"✓ Fixed {len(inconsistencies)} inconsistency/inconsistencies.\n")
+        else:
+            print(
+                "\nProceeding with sync. Min/Max values will be erased for inconsistent items.\n")
+
+    return rules_df
+
+
 def apply_dno_zeroing(rules_df):
     """For any store where DNO is True, set the corresponding Min and Max to 0."""
     zeroed_count = 0
@@ -411,19 +321,65 @@ def apply_dno_zeroing(rules_df):
     return rules_df
 
 
+def apply_zero_to_dno(rules_df):
+    """For any store where both Min and Max are 0, set DNO to True."""
+    dno_count = 0
+
+    for code in store_map.values():
+        dno_col = f'{code}_DNO'
+        min_col = f'{code}_Min'
+        max_col = f'{code}_Max'
+
+        if dno_col not in rules_df.columns or min_col not in rules_df.columns or max_col not in rules_df.columns:
+            continue
+
+        # Find rows where both Min and Max are 0
+        zero_mask = (rules_df[min_col] == 0) & (rules_df[max_col] == 0)
+
+        if zero_mask.any():
+            # Only set DNO to True if it's not already True
+            to_set = zero_mask & ~(rules_df[dno_col].apply(
+                lambda v: str(v).upper() == 'TRUE' or v is True))
+            dno_count += to_set.sum()
+            rules_df.loc[to_set, dno_col] = True
+
+    if dno_count:
+        print(
+            f"Zero-to-DNO applied: {dno_count} DNO flag(s) set to True (where Min=0 and Max=0).")
+    else:
+        print("Zero-to-DNO: no DNO flags needed adjustment.")
+
+    return rules_df
+
+
 def sync_rules_matrix(vendor, catalog_path, matrix_path):
     """Main logic to sync the rules matrix and push to Google Sheets."""
     try:
+        # Load Google client and connect to vendor sheet
+        print("\nConnecting to Google Sheets...")
+        client = get_google_client()
+        spreadsheet = get_or_create_sheet(client, vendor)
+
+        # Load excluded SKUs from the same Rules Matrix spreadsheet
+        excluded_skus = load_excluded_skus(spreadsheet)
+
         catalog = load_catalog(catalog_path)
         # Filter excluded SKUs from catalog
-        catalog = catalog[~catalog['SKU'].isin(EXCLUDED_SKUS)]
+        catalog = catalog[~catalog['SKU'].isin(excluded_skus)]
+
         rules_df = load_or_create_matrix(matrix_path, catalog)
         # Remove excluded SKUs from matrix
-        rules_df = remove_excluded_skus(rules_df)
+        rules_df = remove_excluded_skus(rules_df, excluded_skus)
         rules_df = remove_discontinued_skus(rules_df, catalog)
         rules_df = ensure_store_columns(rules_df)
         rules_df = append_new_skus(rules_df, catalog)
+
+        # VALIDATION: Check for DNO/Min/Max inconsistencies before applying zeroing
+        rules_df = validate_dno_consistency(rules_df)
+
+        # Now apply the sync logic
         rules_df = apply_dno_zeroing(rules_df)
+        rules_df = apply_zero_to_dno(rules_df)
 
         matrix_columns = ['SKU', 'Item Name',
                           'Reporting Category', 'Order In Quantities']
@@ -440,9 +396,6 @@ def sync_rules_matrix(vendor, catalog_path, matrix_path):
         print(f"\nLocal matrix saved at {matrix_path}")
 
         # Push to Google Sheets
-        print("\nConnecting to Google Sheets...")
-        client = get_google_client()
-        spreadsheet = get_or_create_sheet(client, vendor)
         push_to_sheets(spreadsheet, rules_df)
 
         print(f"\nSuccess! Matrix synced locally and to Google Sheets.")

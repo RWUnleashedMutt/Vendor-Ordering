@@ -1,0 +1,5 @@
+{
+  "consolidate": "./vendor_consolidation.py",
+  "changes": "./apply_changes.py",
+  "create": "./cmtest.py"
+}

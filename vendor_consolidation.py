@@ -15,7 +15,8 @@ SHEET_IDS = {
     'Front Porch Pets': '1CyW8rNNWzmYH9iqVRgN5iTWCiqgd-cJnrAJGktGS2a0',
     'Butchers Block': '1nDtvvDVu9tAzR2iDB4uMpUG3rcN3Fm_v09WJw3jvbJI',
     'Adored Beast': '1HwOxpAzI_HlntVVfOqxBVAWDy7cznPxxhUqOR5cy6ng',
-    'InClover': '1GJX-rqphRYAHM50HKrXhE3qG3ZUeB9kP0njwcuM56co'
+    'InClover': '1GJX-rqphRYAHM50HKrXhE3qG3ZUeB9kP0njwcuM56co',
+    'Bradley Caldwell': '1eqENDXTdDJVKdos-VUXYNYMNM806rNcDrv63Q654nyc'
 }
 
 # ID of the master sheet to write to - you'll need to create this first or provide the ID

@@ -147,7 +147,7 @@ def compare_and_apply(local_df, sheets_df):
 def export_change_log(changes_df, added, removed, sheets_df, local_df, vendor):
     """Export a change log Excel report."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = f'./Data/Rules/{vendor}_ChangeLog_{timestamp}.xlsx'
+    output_path = f'./Data/log/{vendor}_ChangeLog_{timestamp}.xlsx'
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     added_df = sheets_df[sheets_df['SKU'].isin(

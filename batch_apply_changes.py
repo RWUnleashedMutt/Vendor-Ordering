@@ -1,3 +1,4 @@
+import time
 import tomllib
 import os
 import sys
@@ -93,6 +94,7 @@ def collect_all_changes(vendors, client, dry_run=False):
             matrix_path = f'./Data/Rules/{vendor} Rules Matrix.xlsx'
 
             sheets_df = pull_from_sheets(client, sheet_id)
+            time.sleep(3)
             local_df = load_local_matrix(matrix_path)
 
             updated_df, changes_df, added, removed = compare_and_apply(

@@ -1,3 +1,4 @@
+import time
 import gspread
 from google.oauth2.service_account import Credentials
 import logging
@@ -11,7 +12,8 @@ logger = logging.getLogger(__name__)
 with open('./.streamlit/secrets.toml', 'rb') as f:
     config = tomllib.load(f)
 
-SHEET_IDS = config['sheet_ids']
+SHEET_IDS = config['cons_sheet_ids']
+# SHEET_IDS = config['cons_sheet_ids']
 
 # ID of the master sheet to write to - you'll need to create this first or provide the ID
 MASTER_SHEET_ID = '1W-AGqIXwcqL7clDHad43hFmpPrrXzNUDYC4-dVGpngo'
@@ -35,6 +37,7 @@ def get_sheet_data(client, sheet_id):
         spreadsheet = client.open_by_key(sheet_id)
         worksheet = spreadsheet.sheet1  # Get the first sheet, whatever it's named
         data = worksheet.get_all_values()
+        time.sleep(5)
         logger.info(
             f"Retrieved {len(data)} rows from sheet ID {sheet_id} (sheet: {worksheet.title})")
         return data

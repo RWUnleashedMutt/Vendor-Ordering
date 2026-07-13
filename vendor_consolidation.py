@@ -37,7 +37,7 @@ def get_sheet_data(client, sheet_id):
         spreadsheet = client.open_by_key(sheet_id)
         worksheet = spreadsheet.sheet1  # Get the first sheet, whatever it's named
         data = worksheet.get_all_values()
-        time.sleep(5)
+        time.sleep(10)
         logger.info(
             f"Retrieved {len(data)} rows from sheet ID {sheet_id} (sheet: {worksheet.title})")
         return data

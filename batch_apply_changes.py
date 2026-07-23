@@ -67,6 +67,54 @@ def load_vendors_from_config():
         sys.exit(1)
 
 
+def select_vendors_interactively(vendors):
+    """
+    Prompt the user in the console to run against all vendors
+    or a single vendor, to limit API calls when only one sheet
+    needs checking. Returns a filtered vendors dict.
+    """
+    vendor_names = list(vendors.keys())
+
+    print("\n" + "="*60)
+    print("VENDOR SELECTION")
+    print("="*60)
+    print("  [A] All vendors")
+    print("  [S] Select a single vendor")
+
+    choice = input(
+        "\nRun batch apply for all vendors, or select one? (A/S): ").strip().lower()
+
+    if choice != 's':
+        return vendors
+
+    print("\nAvailable vendors:")
+    for i, name in enumerate(vendor_names, start=1):
+        print(f"  {i}. {name}")
+
+    while True:
+        selection = input(
+            f"\nEnter a vendor number (1-{len(vendor_names)}) or name: "
+        ).strip()
+
+        # Allow selecting by number
+        if selection.isdigit():
+            idx = int(selection)
+            if 1 <= idx <= len(vendor_names):
+                chosen = vendor_names[idx - 1]
+                return {chosen: vendors[chosen]}
+            print(f"  Invalid number. Please enter 1-{len(vendor_names)}.")
+            continue
+
+        # Allow selecting by exact name (case-insensitive match)
+        matches = [name for name in vendor_names if name.lower() ==
+                   selection.lower()]
+        if matches:
+            chosen = matches[0]
+            return {chosen: vendors[chosen]}
+
+        print(f"  '{selection}' not found. Try again.")
+
+
 def collect_all_changes(vendors, client, dry_run=False):
     """
     Collect changes for all vendors without applying them yet.
@@ -88,13 +136,17 @@ def collect_all_changes(vendors, client, dry_run=False):
     print("SCANNING FOR CHANGES" + (" (DRY RUN)" if dry_run else ""))
     print("="*60 + "\n")
 
+    # Skip the rate-limit delay entirely when there's only one vendor
+    single_vendor = len(vendors) == 1
+
     for vendor, sheet_id in vendors.items():
         print(f"Scanning: {vendor}...", end=" ")
         try:
             matrix_path = f'./Data/Rules/{vendor} Rules Matrix.xlsx'
 
             sheets_df = pull_from_sheets(client, sheet_id)
-            time.sleep(10)
+            if not single_vendor:
+                time.sleep(3)
             local_df = load_local_matrix(matrix_path)
 
             updated_df, changes_df, added, removed = compare_and_apply(
@@ -223,6 +275,13 @@ def main():
         # Load config
         vendors = load_vendors_from_config()
         print(f"\nLoaded {len(vendors)} vendors from config.toml")
+
+        # Always prompt interactively: all vendors or just one
+        vendors = select_vendors_interactively(vendors)
+        if len(vendors) == 1:
+            print(f"Running for single vendor: {next(iter(vendors))}")
+        else:
+            print(f"Running for all {len(vendors)} vendors")
 
         # Single auth for all vendors
         print("Connecting to Google Sheets...")

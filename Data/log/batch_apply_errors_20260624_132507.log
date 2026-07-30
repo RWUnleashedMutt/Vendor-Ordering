@@ -1,0 +1,4 @@
+2026-06-24T13:25:40.668611 - [Nordic Naturals] APIError: [429]: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:610465933271'.
+2026-06-24T13:25:40.793517 - [Glacier Peak] APIError: [429]: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:610465933271'.
+2026-06-24T13:25:40.914755 - [Great Lakes] APIError: [429]: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:610465933271'.
+2026-06-24T13:25:41.108306 - [Playology] APIError: [429]: Quota exceeded for quota metric 'Read requests' and limit 'Read requests per minute per user' of service 'sheets.googleapis.com' for consumer 'project_number:610465933271'.

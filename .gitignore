@@ -4,4 +4,5 @@ __pycache__/
 .venv/
 credentials.json
 .streamlit/secrets.toml
-data
+./Data
+.claude
